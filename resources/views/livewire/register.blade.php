@@ -2,7 +2,7 @@
     <div class="auth-card">
         <div class="auth-brand">
             <span class="brand-icon">⬡</span>
-            <h1>Relayhub</h1>
+            <h1>PingFlow</h1>
         </div>
         <p class="auth-sub">Create your account</p>
 

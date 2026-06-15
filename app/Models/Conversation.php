@@ -10,6 +10,24 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property-read User|null    $userOne
  * @property-read User|null    $userTwo
  * @property-read Message|null $latestMessage
+ * @property int $id
+ * @property int $user_one_id
+ * @property int $user_two_id
+ * @property \Carbon\CarbonImmutable|null $last_message_at
+ * @property \Carbon\CarbonImmutable|null $created_at
+ * @property \Carbon\CarbonImmutable|null $updated_at
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Message> $messages
+ * @property-read int|null $messages_count
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Conversation newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Conversation newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Conversation query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Conversation whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Conversation whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Conversation whereLastMessageAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Conversation whereUpdatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Conversation whereUserOneId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Conversation whereUserTwoId($value)
+ * @mixin \Eloquent
  */
 class Conversation extends Model
 {

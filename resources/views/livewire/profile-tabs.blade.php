@@ -10,10 +10,6 @@
         <div class="profile-tab-content">
             <div class="profile-section-title">Conversation Info</div>
             <div class="profile-stat">
-                <span class="profile-stat-label">Messages</span>
-                <span class="profile-stat-val">{{ $messageCount }}</span>
-            </div>
-            <div class="profile-stat">
                 <span class="profile-stat-label">Started</span>
                 <span class="profile-stat-val">
                     {{ \Carbon\Carbon::parse($conversation->created_at)->format('d M Y') }}

@@ -6,6 +6,7 @@ use App\Events\RoleChanged;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\View\View;
 use Livewire\Component;
 
 class UsersPage extends Component
@@ -102,7 +103,7 @@ class UsersPage extends Component
         $this->loadUsers();
     }
 
-    public function render()
+    public function render(): View
     {
         $profileUser = $this->viewProfileId
             ? User::with('roles')->find($this->viewProfileId)

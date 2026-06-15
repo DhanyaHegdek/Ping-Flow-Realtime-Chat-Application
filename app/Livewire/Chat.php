@@ -324,4 +324,17 @@ class Chat extends Component
         return view('livewire.chat', compact('user', 'filteredUsers', 'activeConv', 'other'))
             ->layout('layouts.app');
     }
+
+    public function getListeners(): array
+    {
+        $userId = Auth::id();
+        return array_merge($this->listeners, [
+            "echo-private:App.Models.User.{$userId},RoleChanged" => 'handleRoleChanged',
+        ]);
+    }
+
+    public function handleRoleChanged(): void
+    {
+        $this->redirect('/');
+    }
 }

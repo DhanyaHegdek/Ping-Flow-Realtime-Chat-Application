@@ -2,8 +2,6 @@
 
 A real-time one-to-one chat application built with Laravel, Livewire, Alpine.js, and Laravel Reverb.
 
-Started as a Laravel API + React SPA, then migrated to a server-rendered Livewire frontend while keeping the original JWT API intact for external clients.
-
 ## Features
 
 - Real-time one-to-one messaging with online/offline presence
@@ -55,6 +53,3 @@ Visit `http://pingflow.test`.
 - **[docs/SETUP.md](docs/SETUP.md)** — full installation walkthrough, package list, provider/middleware registration, environment variables, database schema
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — project structure, file-by-file explanation of backend and frontend, real-time system internals, authentication design
 
-## License
-
-Add your license here.

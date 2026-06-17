@@ -6,6 +6,7 @@ Full installation walkthrough for Pingflow, including required packages, file pl
 
 - [1. Create or Clone the Project](#1-create-or-clone-the-project)
 - [2. Install Required Packages](#2-install-required-packages)
+- [Package-by-Package Configuration](#package-by-package-configuration)
 - [3. Project File Layout](#3-project-file-layout)
 - [4. Register `helpers.php`](#4-register-helpersphp)
 - [5. Register Providers](#5-register-providers)
@@ -55,6 +56,130 @@ php artisan vendor:publish --provider="PHPOpenSourceSaver\JWTAuth\Providers\Lara
 php artisan vendor:publish --provider="Spatie\Permission\PermissionServiceProvider"
 php artisan reverb:install
 ```
+
+---
+
+## Package-by-Package Configuration
+
+Installing each package isn't enough on its own — this section covers what each one needs configured before it actually works in this project.
+
+### Livewire
+
+No config file is needed for basic usage, but two things matter for this project specifically:
+
+1. **Component location.** Livewire 3 defaults to `app/Livewire/` and `resources/views/livewire/`. If you're using a starter kit or an older convention that scaffolds to `app/Http/Livewire/`, the namespace in every component file (`namespace App\Livewire;` vs `namespace App\Http\Livewire;`) and every route reference (`\App\Livewire\Chat::class`) must match wherever you actually placed the files. Check which one your project uses before copying files in:
+
+    ```bash
+    ls app/Livewire 2>/dev/null && echo "Uses app/Livewire" || echo "Uses app/Http/Livewire"
+    ```
+
+2. **Nested components.** `<livewire:profile-tabs />` and `<livewire:edit-profile-panel />` (used inside `chat.blade.php`) resolve automatically by kebab-case component name regardless of folder — no manual registration needed for these.
+
+### Spatie `laravel-permission`
+
+```bash
+php artisan vendor:publish --provider="Spatie\Permission\PermissionServiceProvider"
+php artisan migrate
+```
+
+This creates the `roles`, `permissions`, `model_has_roles`, `model_has_permissions`, and `role_has_permissions` tables. If `php artisan migrate` reports "Nothing to migrate" but the tables don't actually exist (this can happen if a prior failed migration attempt still marked itself as run), clear the stale record and re-run:
+
+```bash
+php artisan tinker
+```
+
+```php
+DB::table('migrations')->where('migration', 'like', '%permission%')->delete();
+exit
+```
+
+```bash
+php artisan migrate
+```
+
+Roles must exist before they can be assigned — see [Creating an Admin User](#creating-an-admin-user) below. The `User` model already has the `HasRoles` trait applied; no further setup is required there.
+
+Add the middleware alias (see [step 6](#6-register-middleware-alias)) so `middleware('role:admin|super_admin')` works in `routes/web.php`.
+
+### Broadcasting (Reverb + Echo)
+
+Three pieces have to agree with each other: the Reverb server, the `.env` values, and the client-side Echo config.
+
+**1. Install and configure Reverb:**
+
+```bash
+composer require laravel/reverb
+php artisan reverb:install
+```
+
+This adds `BROADCAST_CONNECTION`, `REVERB_*`, and `VITE_REVERB_*` entries to `.env` automatically — verify they match the [Environment Variables](#environment-variables) section below.
+
+**2. Authorization middleware** — in `app/Providers/BroadcastServiceProvider.php`:
+
+```php
+public function boot(): void
+{
+    Broadcast::routes(['middleware' => ['web', 'auth']]);
+    require base_path('routes/channels.php');
+}
+```
+
+This must be `['web', 'auth']`, not `['api']`. The `web` group reads the session cookie; since this project's Livewire UI authenticates via session (not JWT), using the `api` middleware here would make every channel subscription fail with a 403.
+
+**3. Channel authorization** lives in `routes/channels.php` — already included in this project, defining who can join `conversation.{id}` (presence channel) and `App.Models.User.{id}` (private channel for role-change notifications).
+
+**4. Client-side Echo** — `resources/js/app.js`:
+
+```js
+window.Echo = new Echo({
+    broadcaster: "reverb",
+    key: import.meta.env.VITE_REVERB_APP_KEY,
+    wsHost: import.meta.env.VITE_REVERB_HOST,
+    wsPort: import.meta.env.VITE_REVERB_PORT,
+    forceTLS: false,
+    enabledTransports: ["ws", "wss"],
+});
+```
+
+No `authEndpoint` or manual auth headers are needed — the browser sends the session cookie automatically with the `/broadcasting/auth` request that Echo makes internally.
+
+**5. Run the Reverb server** (separate from `php artisan serve`/Herd):
+
+```bash
+php artisan reverb:start
+```
+
+This must stay running for any real-time feature (messages, presence, role-change notifications) to work. If it's not running, the chat will still function via normal page loads/Livewire actions, but nothing will update live in another open tab.
+
+### Queue (for broadcast delivery)
+
+`MessageSent` and `RoleChanged` both implement `ShouldBroadcast`, which Laravel processes through the queue system by default.
+
+**Option A — quick local development (no queue worker needed):**
+
+```env
+QUEUE_CONNECTION=sync
+```
+
+Broadcasts fire immediately, synchronously, in the same request. Simplest option while developing, but not suitable for production (it blocks the request until the broadcast completes).
+
+**Option B — proper queue (recommended even for local dev once things work):**
+
+```env
+QUEUE_CONNECTION=database
+```
+
+```bash
+php artisan queue:table
+php artisan migrate
+php artisan queue:work
+```
+
+`php artisan queue:work` must be running continuously (alongside `reverb:start` and `npm run dev`) for queued broadcasts to actually get delivered — see [Running the App](#running-the-app).
+
+If messages aren't appearing in real time and there are no errors anywhere, the most common cause is `QUEUE_CONNECTION=database` (or `redis`) with no `queue:work` process running — the broadcast job is sitting in the `jobs` table, never processed.
+
+---
 
 ## 3. Project File Layout
 
@@ -185,6 +310,8 @@ DB_PASSWORD=
 SESSION_DRIVER=file
 SESSION_DOMAIN=.pingflow.test
 
+QUEUE_CONNECTION=sync   # or 'database' once queue:work is running — see Queue section above
+
 BROADCAST_CONNECTION=reverb
 REVERB_APP_ID=pingflow
 REVERB_APP_KEY=pingflowkey
@@ -234,7 +361,56 @@ $user = App\Models\User::where('email', 'you@example.com')->first();
 $user->syncRoles(['admin']);
 ```
 
-Alternatively, create a seeder (`php artisan make:seeder AdminSeeder`) that creates the roles and a default admin account, then run `php artisan db:seed --class=AdminSeeder`.
+Alternatively, use a seeder for repeatable setup (e.g. fresh installs, CI, `migrate:fresh`). Create `database/seeders/AdminSeeder.php`:
+
+```php
+<?php
+
+namespace Database\Seeders;
+
+use App\Models\User;
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
+use Spatie\Permission\Models\Role;
+
+class AdminSeeder extends Seeder
+{
+    public function run(): void
+    {
+        Role::firstOrCreate(['name' => 'user',        'guard_name' => 'web']);
+        Role::firstOrCreate(['name' => 'admin',       'guard_name' => 'web']);
+        Role::firstOrCreate(['name' => 'super_admin', 'guard_name' => 'web']);
+
+        $admin = User::firstOrCreate(
+            ['email' => 'admin@pingflow.test'],
+            [
+                'name'          => 'Super Admin',
+                'password'      => Hash::make('password'),
+                'storage_quota' => 1073741824,
+                'storage_used'  => 0,
+            ]
+        );
+        $admin->syncRoles(['super_admin']);
+    }
+}
+```
+
+Run it directly:
+
+```bash
+php artisan db:seed --class=AdminSeeder
+```
+
+Or wire it into `database/seeders/DatabaseSeeder.php` so it runs automatically with `php artisan migrate --seed` or plain `php artisan db:seed`:
+
+```php
+public function run(): void
+{
+    $this->call(AdminSeeder::class);
+}
+```
+
+Note: by default, `DatabaseSeeder.php` only contains Laravel's scaffolded `User::factory()->create([...])` line, which creates a roleless test user — it does **not** call `AdminSeeder` unless you explicitly add the `$this->call(...)` line above.
 
 ---
 
@@ -242,36 +418,36 @@ Alternatively, create a seeder (`php artisan make:seeder AdminSeeder`) that crea
 
 ### `users` (extended from default Laravel)
 
-| Column | Type | Notes |
-|---|---|---|
-| `bio` | text, nullable | |
-| `avatar` | string, nullable | path under `storage/app/public/avatars` |
-| `storage_used` | unsigned bigint, default 0 | bytes |
-| `storage_quota` | unsigned bigint, default 1073741824 | bytes (1GB default) |
+| Column          | Type                                | Notes                                   |
+| --------------- | ----------------------------------- | --------------------------------------- |
+| `bio`           | text, nullable                      |                                         |
+| `avatar`        | string, nullable                    | path under `storage/app/public/avatars` |
+| `storage_used`  | unsigned bigint, default 0          | bytes                                   |
+| `storage_quota` | unsigned bigint, default 1073741824 | bytes (1GB default)                     |
 
 Plus Spatie's `model_has_roles`, `roles`, `permissions` tables.
 
 ### `conversations`
 
-| Column | Type |
-|---|---|
-| `user_one_id` | foreign key → users |
-| `user_two_id` | foreign key → users |
+| Column            | Type                |
+| ----------------- | ------------------- |
+| `user_one_id`     | foreign key → users |
+| `user_two_id`     | foreign key → users |
 | `last_message_at` | timestamp, nullable |
 
 ### `messages`
 
-| Column | Type |
-|---|---|
-| `conversation_id` | foreign key → conversations |
-| `sender_id` | foreign key → users |
-| `body` | text, nullable |
-| `reply_to_id` | foreign key → messages, nullable |
-| `read_at` | timestamp, nullable |
-| `file_path` | string, nullable |
-| `file_name` | string, nullable |
-| `file_type` | string, nullable |
-| `file_size` | unsigned bigint, nullable |
+| Column            | Type                             |
+| ----------------- | -------------------------------- |
+| `conversation_id` | foreign key → conversations      |
+| `sender_id`       | foreign key → users              |
+| `body`            | text, nullable                   |
+| `reply_to_id`     | foreign key → messages, nullable |
+| `read_at`         | timestamp, nullable              |
+| `file_path`       | string, nullable                 |
+| `file_name`       | string, nullable                 |
+| `file_type`       | string, nullable                 |
+| `file_size`       | unsigned bigint, nullable        |
 
 ---
 

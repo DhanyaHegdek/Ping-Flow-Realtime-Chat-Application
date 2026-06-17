@@ -16,18 +16,18 @@ This document covers the project structure, a file-by-file explanation of the ba
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Backend framework | Laravel 13 |
-| Frontend rendering | Blade + Livewire 3 (server-driven UI) |
-| Client-side reactivity | Alpine.js (bundled with Livewire) |
-| Real-time transport | Laravel Reverb (WebSocket server) + Laravel Echo (client) |
-| Session auth | Laravel `web` guard (cookie/session) |
-| API auth | JWT via `php-open-source-saver/jwt-auth` (`api` guard, kept for external clients) |
-| Roles & permissions | Spatie `laravel-permission` |
-| Database | PostgreSQL |
-| File storage | Laravel `Storage` facade → `storage/app/public` (symlinked) |
-| Build tool | Vite |
+| Layer                  | Technology                                                                        |
+| ---------------------- | --------------------------------------------------------------------------------- |
+| Backend framework      | Laravel 13                                                                        |
+| Frontend rendering     | Blade + Livewire 3 (server-driven UI)                                             |
+| Client-side reactivity | Alpine.js (bundled with Livewire)                                                 |
+| Real-time transport    | Laravel Reverb (WebSocket server) + Laravel Echo (client)                         |
+| Session auth           | Laravel `web` guard (cookie/session)                                              |
+| API auth               | JWT via `php-open-source-saver/jwt-auth` (`api` guard, kept for external clients) |
+| Roles & permissions    | Spatie `laravel-permission`                                                       |
+| Database               | PostgreSQL                                                                        |
+| File storage           | Laravel `Storage` facade → `storage/app/public` (symlinked)                       |
+| Build tool             | Vite                                                                              |
 
 ---
 
@@ -204,16 +204,16 @@ The core component. Properties hold all UI state (`activeConvId`, `conversations
 
 Key methods:
 
-| Method | Purpose |
-|---|---|
-| `mount()` | Runs once on page load — loads conversations and storage info |
-| `loadConversations()` | Queries conversations belonging to the current user, serializes for the view |
-| `selectConversation($id)` | Switches the active conversation, loads its messages, resets search/profile state |
-| `loadMessages()` | Fetches messages for the active conversation with sender/reply data |
-| `sendMessage()` | Validates, creates the `Message` row, updates `last_message_at`, broadcasts `MessageSent`, appends to local state |
-| `startConversation($userId)` | Finds or creates a conversation between the current user and another |
-| `searchMessages()` | Case-insensitive (`ILIKE`) search scoped to the active conversation |
-| `logout()` | `Auth::guard('web')->logout()` + session invalidation |
+| Method                       | Purpose                                                                                                           |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `mount()`                    | Runs once on page load — loads conversations and storage info                                                     |
+| `loadConversations()`        | Queries conversations belonging to the current user, serializes for the view                                      |
+| `selectConversation($id)`    | Switches the active conversation, loads its messages, resets search/profile state                                 |
+| `loadMessages()`             | Fetches messages for the active conversation with sender/reply data                                               |
+| `sendMessage()`              | Validates, creates the `Message` row, updates `last_message_at`, broadcasts `MessageSent`, appends to local state |
+| `startConversation($userId)` | Finds or creates a conversation between the current user and another                                              |
+| `searchMessages()`           | Case-insensitive (`ILIKE`) search scoped to the active conversation                                               |
+| `logout()`                   | `Auth::guard('web')->logout()` + session invalidation                                                             |
 
 Listeners registered on the component:
 
@@ -261,17 +261,17 @@ Reusable Blade component. Generates initials and a deterministic HSL color from 
 ### `resources/js/app.js`
 
 ```js
-import Echo from 'laravel-echo';
-import Pusher from 'pusher-js';
+import Echo from "laravel-echo";
+import Pusher from "pusher-js";
 window.Pusher = Pusher;
 
 window.Echo = new Echo({
-    broadcaster: 'reverb',
+    broadcaster: "reverb",
     key: import.meta.env.VITE_REVERB_APP_KEY,
     wsHost: import.meta.env.VITE_REVERB_HOST,
     wsPort: import.meta.env.VITE_REVERB_PORT,
     forceTLS: false,
-    enabledTransports: ['ws', 'wss'],
+    enabledTransports: ["ws", "wss"],
 });
 ```
 
@@ -280,9 +280,9 @@ Opens the actual WebSocket connection. `pusher-js` is used as the transport clie
 ### `resources/js/bootstrap.js`
 
 ```js
-import axios from 'axios';
+import axios from "axios";
 window.axios = axios;
-window.axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
+window.axios.defaults.headers.common["X-Requested-With"] = "XMLHttpRequest";
 ```
 
 Standard Laravel scaffolding — exposes `axios` globally and sets the header Laravel uses to detect AJAX requests.
@@ -327,10 +327,16 @@ Excludes the sender's own browser connection from receiving the broadcast — th
 
 ```js
 Echo.join(`conversation.${convId}`)
-    .here((users) => { /* initial roster on join */ })
-    .joining((user) => { /* someone else connected */ })
-    .leaving((user) => { /* someone else disconnected */ })
-    .listen('MessageSent', callback);
+    .here((users) => {
+        /* initial roster on join */
+    })
+    .joining((user) => {
+        /* someone else connected */
+    })
+    .leaving((user) => {
+        /* someone else disconnected */
+    })
+    .listen("MessageSent", callback);
 ```
 
 `.here()` fires once immediately with the full current roster. `.joining()`/`.leaving()` fire afterward whenever presence changes — this is what flips the green/grey status dot without any polling.
@@ -360,11 +366,14 @@ File uploads go through a direct `fetch()` POST to `ChatController::uploadFile()
 ```js
 async function uploadFile(input, convId) {
     const formData = new FormData();
-    formData.append('file', file);
-    formData.append('_token', csrfToken);
-    const res = await fetch(`/conversations/${convId}/upload`, { method: 'POST', body: formData });
+    formData.append("file", file);
+    formData.append("_token", csrfToken);
+    const res = await fetch(`/conversations/${convId}/upload`, {
+        method: "POST",
+        body: formData,
+    });
     // ...
-    Livewire.dispatch('fileUploaded'); // tells Chat.php to reload messages
+    Livewire.dispatch("fileUploaded"); // tells Chat.php to reload messages
 }
 ```
 
@@ -389,12 +398,12 @@ Two independent guards are configured in `config/auth.php`:
 ],
 ```
 
-| | `web` guard | `api` guard |
-|---|---|---|
-| Used by | Livewire components (`Login.php`, `Chat.php`, etc.) | `routes/api.php`, `AuthController.php` |
-| Credential storage | Encrypted session cookie | Bearer token (client-managed) |
-| Login call | `Auth::guard('web')->attempt([...])` | `Auth::guard('api')->attempt([...])` returns a token |
-| Currently used by the browser UI | Yes | No (dormant, available for external clients) |
+|                                  | `web` guard                                         | `api` guard                                          |
+| -------------------------------- | --------------------------------------------------- | ---------------------------------------------------- |
+| Used by                          | Livewire components (`Login.php`, `Chat.php`, etc.) | `routes/api.php`, `AuthController.php`               |
+| Credential storage               | Encrypted session cookie                            | Bearer token (client-managed)                        |
+| Login call                       | `Auth::guard('web')->attempt([...])`                | `Auth::guard('api')->attempt([...])` returns a token |
+| Currently used by the browser UI | Yes                                                 | No (dormant, available for external clients)         |
 
 The JWT API routes and code remain fully functional and untouched — they simply aren't called by anything in the current browser session. This separation means a future mobile app or third-party integration could use `/api/*` with JWT without any changes to the existing web app.
 

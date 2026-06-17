@@ -52,4 +52,3 @@ Visit `http://pingflow.test`.
 
 - **[docs/SETUP.md](docs/SETUP.md)** — full installation walkthrough, package list, provider/middleware registration, environment variables, database schema
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — project structure, file-by-file explanation of backend and frontend, real-time system internals, authentication design
-

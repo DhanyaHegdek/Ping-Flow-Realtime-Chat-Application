@@ -3,7 +3,7 @@
     {{-- ── Toast notifications ── --}}
     <div class="toast-container" x-cloak>
         <template x-for="toast in toasts" :key="toast.id">
-            <div class="toast" @click="dismissToast(toast.id)">
+            <div class="toast" @click="goToConv(toast.convId); dismissToast(toast.id)">
                 <div class="toast-avatar" :style="avatarStyle(toast.sender)" x-text="initials(toast.sender)"></div>
                 <div class="toast-body">
                     <div class="toast-sender" x-text="toast.sender"></div>
@@ -443,29 +443,47 @@ function chatApp() {
                     this.onlineIds.delete(Number(u.id));
                 })
                 .listen('MessageSent', (e) => {
-                    console.log('BROADCAST RECEIVED', e);
-                    console.log('MESSAGE DATA', e.message);
+                    const msg      = e.message;
+                    const myId     = {{ auth()->id() }};
+                    // const activeId = {{ $activeConvId ?? 'null' }};
 
-                    const msg = e.message;
+                    // Get the CURRENT activeConvId from Livewire's live state, not PHP render time
+                    const activeId = window.Livewire.find(
+                        document.querySelector('[wire\\:id]')?.getAttribute('wire:id')
+                    )?.get('activeConvId') ?? null;
 
-                    console.log('conversation_id:', msg.conversation_id);
-                    console.log('activeConvId:', $wire.activeConvId);
-
-                    if (msg.conversation_id == $wire.activeConvId) {
-                        console.log('RELOADING MESSAGES');
-                        $wire.loadMessages();
+                    // Show toast + unread for messages from others
+                    if (msg.sender_id !== myId) {
+                        if (msg.conversation_id !== activeId) {
+                            this.unread[convId] = (this.unread[convId] || 0) + 1;
+                        }
+                        const preview = msg.file_name ? '📎 ' + msg.file_name : msg.body;
+                        this.addToast(msg.sender?.name || 'Someone', preview, msg.conversation_id);
                     }
 
-                    $wire.loadConversations();
+                    // Use Livewire.dispatch — works outside Alpine/$wire context
+                    if (msg.conversation_id === activeId) {
+                        Livewire.dispatch('refreshMessages');
+                    }
+                    Livewire.dispatch('refreshConversations');
                 });
 
             this.channels.set(convId, channel);
         },
 
-        addToast(sender, message) {
+        addToast(sender, message, convId) {
             const id = Date.now() + Math.random();
-            this.toasts.push({ id, sender, message });
+            this.toasts.push({ id, sender, message, convId });
             setTimeout(() => this.dismissToast(id), 5000);
+        },
+
+        goToConv(convId) {
+            if (!convId) return;
+            Livewire.dispatch('refreshConversations');
+            // Tell Livewire to select that conversation
+            window.Livewire.find(
+                document.querySelector('[wire\\:id]')?.getAttribute('wire:id')
+            )?.call('selectConversation', convId);
         },
 
         dismissToast(id) {

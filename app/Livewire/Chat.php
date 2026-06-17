@@ -11,40 +11,28 @@ use Livewire\Component;
 
 class Chat extends Component
 {
-    // ── Active conversation
-    public ?int  $activeConvId  = null;
-
-    // ── Lists
-    public array $conversations = [];
-    public array $messages      = [];
-    public array $allUsers      = [];
-
-    // ── Message input
-    public string $text         = '';
-    public ?int   $replyToId    = null;
-    public ?array $replyToMsg   = null;
-
-    // ── UI toggles
-    public bool $showNewChat     = false;
-    public bool $showProfile     = false;
-    public bool $showEditProfile = false;
-
-    // ── User search in new chat modal
-    public string $userSearch   = '';
-
-    // ── Message search
+    public ?int   $activeConvId  = null;
+    public array  $conversations = [];
+    public array  $messages      = [];
+    public array  $allUsers      = [];
+    public string $text          = '';
+    public ?int   $replyToId     = null;
+    public ?array $replyToMsg    = null;
+    public bool   $showNewChat    = false;
+    public bool   $showProfile    = false;
+    public bool   $showEditProfile = false;
+    public string $userSearch    = '';
     public bool   $showSearch    = false;
     public string $searchQuery   = '';
     public array  $searchResults = [];
+    public ?array $storageInfo   = null;
 
-    // ── Storage (from User model methods)
-    public ?array $storageInfo  = null;
-
-    // ── Livewire listeners
     protected $listeners = [
-        'fileUploaded'           => 'loadMessages',
-        'closeEditProfilePanel'  => 'closeEditProfile',
-        'profileUpdated'         => '$refresh',
+        'fileUploaded'          => 'loadMessages',
+        'refreshMessages'       => 'loadMessages',
+        'refreshConversations'  => 'loadConversations',
+        'closeEditProfilePanel' => 'closeEditProfile',
+        'profileUpdated'        => '$refresh',
     ];
 
     public function closeEditProfile(): void
@@ -57,15 +45,12 @@ class Chat extends Component
         $this->showEditProfile = true;
     }
 
-    // ── Mount
     public function mount(): void
     {
         $this->loadConversations();
         $this->loadStorageInfo();
     }
 
-    // ── Load conversations
-    // Mirrors ChatController::getConversations()
     public function loadConversations(): void
     {
         $userId = Auth::id();
@@ -101,8 +86,6 @@ class Chat extends Component
         ];
     }
 
-    // ── Load storage info
-    // Uses same User model methods as ChatController::storageInfo()
     public function loadStorageInfo(): void
     {
         try {
@@ -112,21 +95,21 @@ class Chat extends Component
                 'quota_fmt'  => $user->storage_quota_formatted,
                 'percentage' => min((int) $user->storagePercentage(), 100),
             ];
-        } catch (\Exception) {
+        } catch (\Exception $e) {
             $this->storageInfo = null;
         }
     }
 
-    // ── Select conversation
     public function selectConversation(int $convId): void
     {
         $userId = Auth::id();
 
         $conv = Conversation::where('id', $convId)
-            ->where(fn($q) => $q
-                ->where('user_one_id', $userId)
-                ->orWhere('user_two_id', $userId)
-            )->firstOrFail();
+            ->where(function ($q) use ($userId) {
+                $q->where('user_one_id', $userId)
+                  ->orWhere('user_two_id', $userId);
+            })
+            ->firstOrFail();
 
         $this->activeConvId  = $conv->id;
         $this->showProfile   = false;
@@ -138,8 +121,6 @@ class Chat extends Component
         $this->dispatch('convSelected', convId: $convId);
     }
 
-    // ── Load messages
-    // Mirrors ChatController::getMessages()
     public function loadMessages(): void
     {
         if (!$this->activeConvId) return;
@@ -164,7 +145,7 @@ class Chat extends Component
             'file_name'     => $m->file_name,
             'file_type'     => $m->file_type,
             'file_size'     => $m->file_size,
-            'file_size_fmt' => $m->file_size_formatted, // from Message accessor
+            'file_size_fmt' => $m->file_size_formatted,
             'created_at'    => $m->created_at->toISOString(),
             'read_at'       => $m->read_at?->toISOString(),
             'sender'        => $m->sender ? [
@@ -182,8 +163,6 @@ class Chat extends Component
         ];
     }
 
-    // ── Send message
-    // Mirrors ChatController::sendMessage()
     public function sendMessage(): void
     {
         if (!$this->activeConvId || !trim($this->text)) return;
@@ -193,10 +172,11 @@ class Chat extends Component
         $userId = Auth::id();
 
         $conversation = Conversation::where('id', $this->activeConvId)
-            ->where(fn($q) => $q
-                ->where('user_one_id', $userId)
-                ->orWhere('user_two_id', $userId)
-            )->firstOrFail();
+            ->where(function ($q) use ($userId) {
+                $q->where('user_one_id', $userId)
+                  ->orWhere('user_two_id', $userId);
+            })
+            ->firstOrFail();
 
         $message = Message::create([
             'conversation_id' => $this->activeConvId,
@@ -207,37 +187,33 @@ class Chat extends Component
 
         $conversation->update(['last_message_at' => now()]);
 
-        // Broadcast to other user — same as ChatController
         broadcast(new MessageSent($message))->toOthers();
 
-        // Add to local messages array without full reload
         $this->messages[] = $this->serializeMessage(
             $message->fresh(['sender', 'replyTo.sender'])
         );
 
-        $this->text      = '';
-        $this->replyToId = null;
+        $this->text       = '';
+        $this->replyToId  = null;
         $this->replyToMsg = null;
 
         $this->loadConversations();
         $this->dispatch('scrollToBottom');
     }
 
-    // ── Start conversation
-    // Mirrors ChatController::startConversation()
     public function startConversation(int $userId): void
     {
         $authId = Auth::id();
 
         if ($authId === $userId) return;
 
-        $conversation = Conversation::where(fn($q) => $q
-            ->where('user_one_id', $authId)
-            ->where('user_two_id', $userId)
-        )->orWhere(fn($q) => $q
-            ->where('user_one_id', $userId)
-            ->where('user_two_id', $authId)
-        )->first();
+        $conversation = Conversation::where(function ($q) use ($authId, $userId) {
+            $q->where('user_one_id', $authId)
+              ->where('user_two_id', $userId);
+        })->orWhere(function ($q) use ($authId, $userId) {
+            $q->where('user_one_id', $userId)
+              ->where('user_two_id', $authId);
+        })->first();
 
         if (!$conversation) {
             $conversation = Conversation::create([
@@ -252,7 +228,6 @@ class Chat extends Component
         $this->selectConversation($conversation->id);
     }
 
-    // ── Open new chat modal — load all users
     public function openNewChat(): void
     {
         $this->allUsers = User::where('id', '!=', Auth::id())
@@ -265,7 +240,6 @@ class Chat extends Component
         $this->userSearch  = '';
     }
 
-    // ── Reply
     public function setReplyTo(int $msgId): void
     {
         $msg = collect($this->messages)->firstWhere('id', $msgId);
@@ -281,8 +255,6 @@ class Chat extends Component
         $this->replyToMsg = null;
     }
 
-    // ── Search messages
-    // Mirrors ChatController::searchMessages() — uses ILIKE for PostgreSQL
     public function searchMessages(): void
     {
         if (!$this->activeConvId || !trim($this->searchQuery)) {
@@ -292,15 +264,15 @@ class Chat extends Component
 
         $userId = Auth::id();
 
-        // Security check — user must belong to conversation
         Conversation::where('id', $this->activeConvId)
-            ->where(fn($q) => $q
-                ->where('user_one_id', $userId)
-                ->orWhere('user_two_id', $userId)
-            )->firstOrFail();
+            ->where(function ($q) use ($userId) {
+                $q->where('user_one_id', $userId)
+                  ->orWhere('user_two_id', $userId);
+            })
+            ->firstOrFail();
 
         $this->searchResults = Message::where('conversation_id', $this->activeConvId)
-            ->where('body', 'ilike', '%' . $this->searchQuery . '%') // PostgreSQL ILIKE
+            ->where('body', 'ilike', '%' . $this->searchQuery . '%')
             ->with('sender')
             ->orderBy('created_at', 'desc')
             ->limit(50)
@@ -314,27 +286,23 @@ class Chat extends Component
             ->toArray();
     }
 
-    // ── Logout
     public function logout(): void
     {
         Auth::guard('web')->logout();
         session()->invalidate();
         session()->regenerateToken();
-        $this->redirect(route('login'), navigate: false);
+        $this->redirect(route('login'));
     }
 
-    // ── Toggle profile panel
     public function toggleProfile(): void
     {
         $this->showProfile = !$this->showProfile;
     }
 
-    // ── Render
     public function render()
     {
         $user = Auth::user();
 
-        // Filter users for modal
         $filteredUsers = collect($this->allUsers)->filter(function ($u) {
             if (!$this->userSearch) return true;
             $q = strtolower($this->userSearch);
@@ -342,7 +310,6 @@ class Chat extends Component
                 || str_contains(strtolower($u['email']), $q);
         })->values()->toArray();
 
-        // Active conversation + other user
         $activeConv = $this->activeConvId
             ? Conversation::with(['userOne', 'userTwo'])->find($this->activeConvId)
             : null;
@@ -356,5 +323,18 @@ class Chat extends Component
 
         return view('livewire.chat', compact('user', 'filteredUsers', 'activeConv', 'other'))
             ->layout('layouts.app');
+    }
+
+    public function getListeners(): array
+    {
+        $userId = Auth::id();
+        return array_merge($this->listeners, [
+            "echo-private:App.Models.User.{$userId},RoleChanged" => 'handleRoleChanged',
+        ]);
+    }
+
+    public function handleRoleChanged(): void
+    {
+        $this->redirect('/');
     }
 }

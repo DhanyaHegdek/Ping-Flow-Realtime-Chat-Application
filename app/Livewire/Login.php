@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use Illuminate\Support\Facades\Auth;
+use Illuminate\View\View;
 use Livewire\Component;
 
 class Login extends Component
@@ -31,7 +32,7 @@ class Login extends Component
         $this->error = 'Invalid credentials. Please check your email and password.';
     }
 
-    public function render()
+    public function render(): View
     {
         return view('livewire.login')
             ->layout('layouts.auth', ['title' => 'Sign In']);
